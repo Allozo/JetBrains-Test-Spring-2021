@@ -75,45 +75,60 @@ class YouTubeStatistic:
         :param count_video:
         :return:
         """
-        # Получим json с 50 видео
+        # Получим json с 50 видео в одном запросе
         limit = 50
         url = f'https://www.googleapis.com/youtube/v3/search?key={self.api_key}&channelId={self.channel_id}&part=id&order=date'  # noqa
         url += f'&maxResults={str(limit)}'
 
         list_video = []
         next_page_token = 1
-        next_url = url
-        while len(list_video) < count_video and next_page_token is not None:
-            now_list_video, next_page_token = self._get_video_from_json_page(
-                next_url)
+        while (count_video is None or len(list_video) < count_video) and next_page_token is not None:
+            # Если впервый раз зашли в цикл, то получаем видео с url.
+            # Если уже были итерации, внутри цикла, то дописываем url.
+            if next_page_token == 1:
+                next_url = url
+            else:
+                next_url = url + "&pageToken=" + next_page_token
 
+            now_list_video, next_page_token = self._get_video_from_json_page(next_url)
+
+            # Если получаем все видео канала
+            if count_video is None:
+                list_video += now_list_video
+                continue
+
+            # Если получаем только часть видео
             for video_id in now_list_video:
                 if len(list_video) < count_video:
                     list_video.append(video_id)
 
-            next_url = url + "&pageToken=" + next_page_token
-
         return list_video
 
-    def _get_single_video_data(self, video_id, part):
-        url = f'https://www.googleapis.com/youtube/v3/videos?part={part}&id={video_id}&key={self.api_key}'
+    def _get_single_video_data(self, video_id, type):
+        url = f'https://www.googleapis.com/youtube/v3/videos?part={type}&id={video_id}&key={self.api_key}'
         json_url = requests.get(url)
         data = json.loads(json_url.text)
         try:
-            data = data['items'][0][part]
+            data = data['items'][0][type]
         except KeyError:
             print(f"Не удалось получить данные для видео с id={video_id}")
             print(f"Ссылка {url} оказалась недействительной")
             data = dict()
         return data
 
-    def update_video_data(self, count_video):
+    def update_video_data(self, count_video=None):
+        """
+        Получим статистикку по последним count_video. Если count_video
+        не указано, то хотим получить все видео
+        :param count_video:
+        :return:
+        """
         #  Получим последние count_video видео канала
-        print(f"Получаем последние {count_video} видео")
+        print(f"Получаем видео канала.")
         list_videos = self._get_channel_videos(count_video)
 
         # Получим статистику по полученным видео
-        print(f"Получаем статистику по последним {count_video} видео.")
+        print(f"Получаем статистику по {len(list_videos)} видео.")
         videos_with_statistic = dict()
         parts = ['snippet', 'statistics']
         for video_id in tqdm(list_videos):
